@@ -10,6 +10,7 @@ import datetime
 import sys
 from pathlib import Path
 import numpy as np
+import configparser
 
 # parse commandline arguments
 parser = ap(description='Reads command line arguments and builds configuration '\
@@ -110,13 +111,13 @@ clarg = parser.parse_args()
 if not clarg.rebuild:
 	CONFIGFILE = clarg.project_name+'.cfg'
 
-	# check if configfile	
+	# check if configfile exists	
 	if not Path(CONFIGFILE).exists():
 		clarg.new = True
 	
 	# check if -n flag is set and write a complete new file now based on commandline
 	# arguments and defaults for variables where no command line argument is set 
-	# If -n is not set update configfile with new commandline arguments
+	# If -n is not set, update configfile with new commandline arguments
 	if not (clarg.new):
 		if (len(sys.argv)) > 2:
 			addons.configWrite(CONFIGFILE, clarg, sys.argv, True)
@@ -125,13 +126,57 @@ if not clarg.rebuild:
 		addons.configWrite(CONFIGFILE, clarg, sys.argv, False)
 else:clarg.new = True
 	
-BINFILE = clarg.project_name+'-InitialConditions.bin'
-
-# Check if configuration file was changed and build a new binfile if it has 
+# Check if configuration file was changed
+# Build a new binfile if configuration file was changed 
 if clarg.new:addons.initReboundBinaryFile(clarg.project_name, sys.argv)
 
-# load simulation from binary file
-sim = rb.Simulation.from_file(BINFILE)
 
+BINFILE 	= clarg.project_name+'-InitialConditions.bin'
+CONFIGFILE 	= clarg.project_name+'.cfg'
+
+# load simulation from binary file
+sim 		= rb.Simulation.from_file(BINFILE)
+   
+# read in config file
+cfin 		= configparser.ConfigParser()
+cfin.read(CONFIGFILE)
+
+sim_units 	= addons.configStr2List(cfin['Simulation']['units'])
+sim.tmax  	= float(cfin['Simulation']['tmax'])
+
+print("---------------------------------\nsim.G:\t\t\t{}\nsim.units:\t\t{}\nsim.tmax:\t\t{}".format(sim.G, sim_units, sim.tmax))
 sim.status()
-print(sim.G)
+
+sim.G 		= 4*(np.pi*np.pi)		# correction for G to be 4Pi^2
+sim_t 		= sim.t 				# save Julian Day (startdate) 
+sim.t 		= 0						# set simulation time to 0
+# sim.dt = sim.particles["Adrastea"].P*0.05
+# sim.dt=1/365.25/24/2
+sim_n_out 	= sim.tmax*365.25*24 	# Number of output steps in integration
+times 		= np.linspace(0.,sim.tmax,sim_n_out)
+
+# move simulation to common barycenter
+sim.calculate_com(first=0, last=12)
+sim.move_to_com()
+
+# Add gravitational harmonics J2 and J4 using reboundx. The reference radius 
+# is 71,492 km and the known zonal harmonics are from Folkner, W. M., et al. 
+# (2017), Jupiter gravity field estimated from the first two Juno orbits, 
+# Geophys. Res. Lett., 44, 4694–4700, doi:10.1002/2017GL073140.
+
+ps 			= sim.particles
+rebx 		= rbx.Extras(sim)
+rebx.add("gravitational_harmonics")
+
+ps["Jupiter"].params["J2"] = 0.014696514
+ps["Jupiter"].params["J4"] = -0.000586632
+ps["Jupiter"].params["R_eq"] = 71492/1.496e8
+
+#for time in range (0, int(2*365.25*24),1):
+#	sim.integrate(time*(sim.dt*2))
+
+for i,time in enumerate(times):
+	sim.integrate(time)
+	print("{},{},{},{}".format(sim.t,sim.dt,sim_t+(sim.t*365.25),sim.particles["Io"].e))
+
+

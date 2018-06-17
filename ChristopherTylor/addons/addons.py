@@ -109,10 +109,11 @@ def initReboundBinaryFile(project_name, sys_argv):
     sim.dt          = float(cfin['Simulation']['dt'])
     sim.gravity     = cfin['Integrator']['gravity']
     sim.collision   = cfin['Integrator']['collision']
-    tmax            = float(cfin['Simulation']['tmax'])
+    sim.tmax            = float(cfin['Simulation']['tmax'])
 
 
 # Save initial conditions to binary file
+    print("sim.tmax = {}".format(sim.tmax))
     sim.save(BINFILE)
 
     return 0

@@ -21,4 +21,3 @@ def hash(key):
         return c_uint32(clibrebound.reb_hash(c_char_p(key.encode('ascii'))))
     else:
         raise AttributeError("Need to pash hash an integer or string.")
-
